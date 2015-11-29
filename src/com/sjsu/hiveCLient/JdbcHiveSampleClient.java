@@ -27,17 +27,29 @@ public class JdbcHiveSampleClient {
 	private static String driverName = "org.apache.hive.jdbc.HiveDriver";
 	//  private static String driverName = "org.apache.hadoop.hive.jdbc.HiveDriver";
 	private static Connection conHive;
-	private static Connection con;	
-	private static final String QRY_LOC = "select x,Y, count(*) as CNT  from sfpd group by X,Y sort by CNT desc limit 20";
+	private static Connection con;
+	private static final String QRY_TOT = "select count(*) from sfpd";
+	private static final String QRY_LOC = "select Y,X, count(*) as CNT  from sfpd group by Y,X sort by CNT desc limit 20";
 	private static final String QRY_MONTH = "select (substr(DateofIncident,0,2)) , count(*) as CNT from sfpd group by (substr(DateofIncident,0,2)) order by cnt desc";
-	private static final String QRY_HOUR = "SELECT LOC, COUNT(*) AS CNT FROM SFPD GROUP BY LOC SORT BY CNT DESC";
+	private static final String QRY_HOUR = "SELECT substr(time,0,2), COUNT(*) AS CNT FROM SFPD GROUP BY substr(time,0,2) SORT BY CNT DESC";
 	private static final String QRY_DAY = "select DayOfWeek, count(*) as CNT from sfpd group by DayOfWeek";
 	private static final String QRY_YEAR = "select (substr(DateofIncident,7,4)) AS YR, count(*) as CNT from sfpd group by (substr(DateofIncident,7,4)) order by YR";
 	private static final String QRY_CAT = "select category, count(*) as CNT  from sfpd group by category sort by CNT desc limit 25";
+	private static final String QRY_LOCHR = "select address, substr(Time,0,2) , count(*) as CNT from sfpd group by address, substr(time,0,2) order by cnt desc limit 50";
 	private static final String QRY_MYSQL = "SELECT * FROM DATAEXTRACT WHERE ID = ?";
-	private static final String INSERT_QRY = "INSERT INTO DATAEXTRACT VALUES (?,?,?);";
+	private static final String QRY_MYSQL_STATS = "SELECT * FROM STATS";
+	private static final String INSERT_QRY = "INSERT INTO DATAEXTRACT";
+	private static final String VAL = " VALUES ";
+	private static final String OPEN_BRAC  = "(";
+	private static final String CLOSE_BRAC  = ")";
+	private static final String QUES = "?";
+	private static final String COMMA = ",";
+	private static final String INSERT_DATA = "INSERT INTO DATAEXTRACT VALUES (?,?,?)";
+	private static final String QRY_STATS = "select category , substr(DateofIncident,4,2) as month, substr(DateofIncident,7,4) as yr, substr(time,0,2) as hr, y,x,address, count(*) as cnt from sfpd group by category , substr(DateofIncident,4,2), substr(DateofIncident,7,4), substr(time,0,2), x, y,address order by cnt desc, yr desc limit 1000";
+	private static final String INSERT_STATS = "INSERT INTO STATS VALUES (?,?,?,?,?,?,?,?);";
 	private static final String DELETE_QRY = "DELETE FROM DATAEXTRACT";
-	private static final String QRY_REASON = "SELECT X,Y FROM SFPD LIMIT 5";
+	private static final String DELETE_STATS = "DELETE FROM STATS";
+	private static final String QRY_TRF = "select count(*) from sfpd where description like '%TRAFFIC%'";
 	private static final String JDBC_DRIVER = "com.mysql.jdbc.Driver";
 	private static final String DB_URL = "jdbc:mysql://";
 	private static String DB_HOST = "localhost";
@@ -107,15 +119,22 @@ public class JdbcHiveSampleClient {
 				}
 				conHive = DriverManager.getConnection("jdbc:hive2://"+HIVE_SERVER+":10000/default", HIVE_USER, HIVE_PASS);
 				System.out.println("ConnHive"+conHive.toString());
-				Statement stmt = con.createStatement();
-				stmt.executeQuery(DELETE_QRY);
+				PreparedStatement stmt = con.prepareStatement(DELETE_QRY);
+				stmt.executeUpdate();
+				stmt.close();
+				stmt = con.prepareStatement(DELETE_STATS);
+				stmt.executeUpdate();
+				stmt.close();
+				runHiveQuery(QRY_TOT,"QRY_TOT");
 				runHiveQuery(QRY_LOC,"QRY_LOC");
 				runHiveQuery(QRY_DAY,"QRY_DAY");
 				runHiveQuery(QRY_HOUR,"QRY_HOUR");
 				runHiveQuery(QRY_MONTH,"QRY_MONTH");
 				runHiveQuery(QRY_YEAR,"QRY_YEAR");
-//				runHiveQuery(QRY_REASON,"QRY_REASON");
+				runHiveQuery(QRY_TRF,"QRY_TRF");
 				runHiveQuery(QRY_CAT,"QRY_CAT");
+				runHiveQuery(QRY_LOCHR,"QRY_LOCHR");
+				runHiveQuery(QRY_STATS, "STATS");
 				conHive.close();
 			}
 		} 
@@ -137,16 +156,50 @@ public class JdbcHiveSampleClient {
 		Statement stmt = null;
 		PreparedStatement st = null;
 		ResultSet res = null;
+		ResultSetMetaData rsmd = null;
+		System.out.println("Hive Query -->" + query);
+
 		try {
 			stmt = conHive.createStatement();
 			res = stmt.executeQuery(query);
-			st= con.prepareStatement(INSERT_QRY);
+			ResultSet temp = res;
+			rsmd = res.getMetaData();
+			int columns = rsmd.getColumnCount();
+			int i = 1;
+			String sql="";
+			if (!id.equals("STATS")){
+				sql = sql + INSERT_QRY + OPEN_BRAC + "ID" + COMMA;
+				while(i<columns){
+					sql = sql + "val" + i++ + COMMA;
+				}
+				sql = sql + "val" + i++ + CLOSE_BRAC + " VALUES" + OPEN_BRAC + QUES + COMMA;
+				i =1 ;
+				while(i<columns){
+					sql = sql + QUES + COMMA;
+					i++;
+				}
+				sql = sql + QUES  + CLOSE_BRAC;
+				i =1 ;
+				st= con.prepareStatement(sql);
+				System.out.println("SQL --> "+ sql);
+			}
+			else 
+				st= con.prepareStatement(INSERT_STATS);
+			
 			while(res.next()){
-				st.setString(1,id);
-				st.setString(2, res.getString(1));
-				st.setString(3, res.getString(2));
+				i=1;
+				int j=1;
+				if (!id.equals("STATS")){
+					st.setString(i,id);
+					i++;
+				}
+				while(j<=columns){
+					st.setString(i, res.getString(j));
+					j++; i++;
+				}
 				st.executeUpdate();
 			}
+			System.out.println("Statement "+ st.toString() );
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -164,27 +217,39 @@ public class JdbcHiveSampleClient {
 		
 	}
 
-	public JSONObject queryDB(String sql, String key, String rowName , String colName)
+	public JSONObject queryDB(String sql, String key)//, String rowName , String colName)
 	{
 		System.out.println("Running: " + sql);
 		JSONObject jsonobj = new JSONObject();
 		JSONArray jarray = new JSONArray();
+		ResultSet res = null;
 		try{
 			PreparedStatement stmt = con.prepareStatement(sql);
-			stmt.setString(1, key);
-			ResultSet res = stmt.executeQuery();
+			int flag=1,i;
+			if(!key.equals("STATS")){
+				stmt.setString(1, key);
+				flag=2;
+			}
+			res = stmt.executeQuery();
+			ResultSetMetaData rsmd = res.getMetaData();
+			int columns = rsmd.getColumnCount();
 			while (res.next()) {
 				JSONObject row = new JSONObject();
-				row.put(rowName, res.getString("val1") );
-				row.put(colName, res.getString("val2") );
-
-//				System.out.println(res.getString(2) + "\t" + res.getString(3));
+				i = flag;
+				while(i <= columns){
+					if( res.getString(i) == null)
+						break;
+					row.put(rsmd.getColumnName(i), res.getString(i));
+//					System.out.println(res.getString(i) + "\t" + res.getString(3));
+					i++;
+				}
+				
 				jarray.put(row);
 			}
 			res.close();
 			jsonobj.put("returndata", jarray);
 			return jsonobj;
-			
+
 		}catch (JSONException e){
 			e.printStackTrace();
 		}catch (Exception e){
@@ -217,20 +282,26 @@ public class JdbcHiveSampleClient {
 		JdbcHiveSampleClient obj = new JdbcHiveSampleClient();
 		obj.initDBConnection();
 		JSONObject jsonobj = new JSONObject();
-		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_LOC","Longitude","Latitude");
+		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_TOT");//,"Longitude","Latitude");
+		obj.writeJsonToFile(jsonobj,"QRY_TOT.txt");
+		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_LOC");//,"Longitude","Latitude");
 		obj.writeJsonToFile(jsonobj,"QRY_LOC.txt");
-		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_MONTH","Month","Count");
+		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_MONTH");//,"Month","Count");
 		obj.writeJsonToFile(jsonobj,"QRY_MONTH.txt");
-		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_HOUR","Hour","Count");
+		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_HOUR");//,"Hour","Count");
 		obj.writeJsonToFile(jsonobj,"QRY_HOUR.txt");
-		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_DAY","Day","Count");
+		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_DAY");//,"Day","Count");
 		obj.writeJsonToFile(jsonobj,"QRY_DAY.txt");
-		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_YEAR","Year","Count");
+		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_YEAR");//,"Year","Count");
 		obj.writeJsonToFile(jsonobj,"QRY_YEAR.txt");
-//		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_REASON","Year","Count");
-//		obj.writeJsonToFile(jsonobj,"QRY_REASON.txt");
-		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_CAT","Category","Count");
+		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_TRF");//,"Year","Count");
+		obj.writeJsonToFile(jsonobj,"QRY_TRF.txt");
+		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_CAT");//,"Category","Count");
 		obj.writeJsonToFile(jsonobj,"QRY_CAT.txt");
+		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_LOCHR");//,"Year","Count");
+		obj.writeJsonToFile(jsonobj,"QRY_LOCHR.txt");
+		jsonobj = obj.queryDB(QRY_MYSQL_STATS,"STATS");//,"","");
+		obj.writeJsonToFile(jsonobj,"STATS.txt");
 	}
 
 }
