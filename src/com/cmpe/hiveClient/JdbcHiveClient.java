@@ -1,4 +1,4 @@
-package com.sjsu.hiveCLient;
+package com.cmpe.hiveClient;
 
 import java.io.FileInputStream;
 import java.io.FileWriter;
