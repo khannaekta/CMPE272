@@ -23,7 +23,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-public class JdbcHiveSampleClient {
+public class JdbcHiveClient {
 	private static String driverName = "org.apache.hive.jdbc.HiveDriver";
 	//  private static String driverName = "org.apache.hadoop.hive.jdbc.HiveDriver";
 	private static Connection conHive;
@@ -63,7 +63,7 @@ public class JdbcHiveSampleClient {
 	private static final String filename ="config.properties";
 	private static String JSON_FILE_PATH = "C:\\mywork\\eclipsews\\sim\\CMPE272Hive\\";
 	
-	public JdbcHiveSampleClient(){
+	public JdbcHiveClient(){
 		init();
 	}
 	
@@ -258,6 +258,21 @@ public class JdbcHiveSampleClient {
 		return null;
 	}
 	
+	public ResultSet querySQL(String sql)
+	{
+		System.out.println("Running: " + sql);
+		ResultSet res = null;
+		try{
+			PreparedStatement stmt = con.prepareStatement(sql);
+			res = stmt.executeQuery();
+			return res;
+
+		}catch (Exception e){
+			e.printStackTrace();
+		}
+		return null;
+	}
+	
 	private void writeJsonToFile(JSONObject obj, String fileName){
 		FileWriter file = null ;
 		try {
@@ -279,7 +294,7 @@ public class JdbcHiveSampleClient {
 		}
 	}
 	public static void main(String[] args) throws SQLException {
-		JdbcHiveSampleClient obj = new JdbcHiveSampleClient();
+		JdbcHiveClient obj = new JdbcHiveClient();
 		obj.initDBConnection();
 		JSONObject jsonobj = new JSONObject();
 		jsonobj = obj.queryDB(QRY_MYSQL,"QRY_TOT");//,"Longitude","Latitude");
@@ -302,6 +317,10 @@ public class JdbcHiveSampleClient {
 		obj.writeJsonToFile(jsonobj,"QRY_LOCHR.txt");
 		jsonobj = obj.queryDB(QRY_MYSQL_STATS,"STATS");//,"","");
 		obj.writeJsonToFile(jsonobj,"STATS.txt");
+		ResultSet rs = obj.querySQL("Select latitude,longitude from ukdata where Road_Surface_Conditions = '1'");
+		while (rs.next()){
+			System.out.println("Latitude("+ rs.getString(1)+"), Longitude("+rs.getString(2)+")");
+		}
 	}
 
 }
